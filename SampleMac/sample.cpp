@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 #include <ctype.h>
 
 #define _USE_MATH_DEFINES
@@ -23,18 +24,6 @@
 #endif
 
 #include "glut.h"
-
-#define XSIDE    10            // length of the x side of the grid
-#define X0      (-XSIDE/2.)        // where one side starts
-#define NX    1000            // how many points in x
-#define DX    ( XSIDE/(float)NX )    // change in x between the points
-
-#define YGRID    0.f            // y-height of the grid
-
-#define ZSIDE    5            // length of the z side of the grid
-#define Z0      (-ZSIDE/2.)        // where one side starts
-#define NZ    1000           // how many points in z
-#define DZ    ( ZSIDE/(float)NZ )    // change in z between the points
 
 //	This is a sample OpenGL / GLUT program
 //
@@ -121,10 +110,6 @@ enum ButtonVals
 
 const GLfloat BACKCOLOR[ ] = { 0., 0., 0., 1. };
 
-// line width for the axes:
-
-const GLfloat AXES_WIDTH   = 3.;
-
 // the color numbers:
 // this order must match the radio button order, which must match the order of the color names,
 // 	which must match the order of the color RGB values
@@ -162,6 +147,30 @@ const GLfloat Colors[ ][3] =
 	{ 1., 0., 1. },		// magenta
 };
 
+struct planet
+{
+        char*                   name;
+        char*                   file;
+        float                   scale;
+        int                     displayList;
+        char                    key;
+        unsigned int            texObject;
+};
+
+struct planet Planets[] =
+{
+        { "Venus",      "venus.bmp",     0.95f, 0, 'v', 0 },
+        { "Earth",      "earth.bmp",     1.00f, 0, 'e', 0 },
+        { "Moon",       "moon.bmp",      0.27f, 0, 'm', 0 },
+        { "Jupiter",    "jupiter.bmp",  11.21f, 0, 'j', 0 },
+        { "Saturn",     "saturn.bmp",    9.45f, 0, 's', 0 },
+        { "Uranus",     "uranus.bmp",    4.01f, 0, 'u', 0 },
+        { "Neptune",    "neptune.bmp",   3.88f, 0, 'n', 0 },
+        { "Pluto",      "pluto.bmp",     0.19f, 0, 'p', 0 },
+};
+
+const int NUMPLANETS = sizeof(Planets) / sizeof(struct planet);
+
 // fog parameters:
 
 const GLfloat FOGCOLOR[4] = { .0f, .0f, .0f, 1.f };
@@ -189,8 +198,6 @@ const int MS_PER_CYCLE = 10000;		// 10000 milliseconds = 10 seconds
 // non-constant global variables:
 
 int		ActiveButton;			// current button that is down
-GLuint	AxesList;				// list to hold the axes
-int		AxesOn;					// != 0 means to draw the axes
 int		DebugOn;				// != 0 means to print debugging info
 int		DepthCueOn;				// != 0 means to use intensity depth cueing
 int		DepthBufferOn;			// != 0 means to use the z-buffer
@@ -203,25 +210,19 @@ int		ShadowsOn;				// != 0 means to turn shadows on
 float	Time;					// used for animation, this has a value between 0. and 1.
 int		Xmouse, Ymouse;			// mouse values
 float	Xrot, Yrot;				// rotation angles in degrees
+int     mode;
+int     NowPlanet;
 
-GLuint DinoDL;
-GLuint Sphere;
-GLuint Torus;
-
-GLuint GridDL;
+GLuint    Sphere;
+GLuint    SphereDL, VenusDL;    // display lists
+GLuint    VenusTex;        // texture object
 
 GLuint  Light;
-bool    PointLight;
-float   LRed;
-float   LGreen;
-float   LBlue;
 
 // function prototypes:
 
 void	Animate( );
 void	Display( );
-void	DoAxesMenu( int );
-void	DoColorMenu( int );
 void	DoDepthBufferMenu( int );
 void	DoDepthFightingMenu( int );
 void	DoDepthMenu( int );
@@ -241,7 +242,6 @@ void	Reset( );
 void	Resize( int, int );
 void	Visibility( int );
 
-void			Axes( float );
 void			HsvRgb( float[3], float [3] );
 void			Cross(float[3], float[3], float[3]);
 float			Dot(float [3], float [3]);
@@ -293,13 +293,13 @@ MulArray3(float factor, float a, float b, float c )
 
 // these are here for when you need them -- just uncomment the ones you need:
 
-#include "setmaterial.cpp"
+//#include "setmaterial.cpp"
 #include "setlight.cpp"
 #include "osusphere.cpp"
 //#include "osucone.cpp"
-#include "osutorus.cpp"
-//#include "bmptotexture.cpp"
-#include "loadobjfile.cpp"
+//#include "osutorus.cpp"
+#include "bmptotexture.cpp"
+//#include "loadobjfile.cpp"
 //#include "keytime.cpp"
 //#include "glslprogram.cpp"
 
@@ -454,55 +454,23 @@ Display( )
 	}
     
     glEnable(GL_LIGHTING);
-    
-    float LPosX = sin(Time * 2 * F_2_PI);
-    float LPosY = 2;
-    float LPosZ = cos(Time * 2 * F_2_PI);
-    
-    if (PointLight)
-        SetPointLight(GL_LIGHT0, LPosX, LPosY, LPosZ, LRed, LGreen, LBlue);
-    else
-        SetSpotLight(GL_LIGHT0, LPosX, LPosY, LPosZ, 0, -1, 0, LRed, LGreen, LBlue);
-    
+    SetPointLight(GL_LIGHT0, sin(Time * 2 * F_2_PI) * 100, 0, cos(Time * 2 * F_2_PI) * 100, 1, 1, 1);
     glEnable(GL_LIGHT0);
-    glDisable(GL_LIGHTING);
-    
-    glColor3f(LRed, LGreen, LBlue);
-    glTranslatef(LPosX, LPosY, LPosZ);
-    glCallList(Light);
-    glTranslatef(-LPosX, -LPosY, -LPosZ);
-
-	// possibly draw the axes:
-
-	if( AxesOn != 0 )
-	{
-		glColor3f(1, 1, 0 );
-		glCallList( AxesList );
-        glEnable(GL_LIGHTING);
-	}
 
 	// since we are using glScalef( ), be sure the normals get unitized:
 
 	glEnable( GL_NORMALIZE );
     glShadeModel(GL_SMOOTH);
-
-	// draw the box object by calling up its display list:
-	glCallList( GridDL );
     
-    SetMaterial(1, 0, 0, 0);
-    glTranslatef(-2, .75, 0);
-    glScalef(0.25, 0.25, 0.25);
-    glCallList( DinoDL );
+    if (mode == 2 || mode == 3) {
+        glEnable(GL_TEXTURE_2D);
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, mode == 2 ? GL_REPLACE : GL_MODULATE);
+    }
     
-    SetMaterial(0, 1, 0, 0);
-    glScalef(4, 4, 4);
-    glTranslatef(3, 0, -1.5);
-    glCallList( Sphere );
+    glCallList( Planets[NowPlanet].displayList );
     
-    SetMaterial(0, 0, 1, 1);
-    glTranslatef(.25, -.5, 3);
-    glScalef(.5, .5, .5);
-    glCallList( Torus );
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_LIGHTING);
 
 #ifdef DEMO_Z_FIGHTING
 	if( DepthFightingOn != 0 )
@@ -553,27 +521,6 @@ Display( )
 
 	glFlush( );
 }
-
-
-void
-DoAxesMenu( int id )
-{
-	AxesOn = id;
-
-	glutSetWindow( MainWindow );
-	glutPostRedisplay( );
-}
-
-
-void
-DoColorMenu( int id )
-{
-	NowColor = id - RED;
-
-	glutSetWindow( MainWindow );
-	glutPostRedisplay( );
-}
-
 
 void
 DoDebugMenu( int id )
@@ -714,15 +661,10 @@ InitMenus( )
 	glutSetWindow( MainWindow );
 
 	int numColors = sizeof( Colors ) / ( 3*sizeof(float) );
-	int colormenu = glutCreateMenu( DoColorMenu );
 	for( int i = 0; i < numColors; i++ )
 	{
 		glutAddMenuEntry( ColorNames[i], i );
 	}
-
-	int axesmenu = glutCreateMenu( DoAxesMenu );
-	glutAddMenuEntry( "Off",  0 );
-	glutAddMenuEntry( "On",   1 );
 
 	int depthcuemenu = glutCreateMenu( DoDepthMenu );
 	glutAddMenuEntry( "Off",  0 );
@@ -745,8 +687,6 @@ InitMenus( )
 	glutAddMenuEntry( "Perspective",   PERSP );
 
 	int mainmenu = glutCreateMenu( DoMainMenu );
-	glutAddSubMenu(   "Axes",          axesmenu);
-	glutAddSubMenu(   "Axis Colors",   colormenu);
 
 #ifdef DEMO_DEPTH_BUFFER
 	glutAddSubMenu(   "Depth Buffer",  depthbuffermenu);
@@ -860,7 +800,24 @@ InitGraphics( )
 #endif
 
 	// all other setups go here, such as GLSLProgram and KeyTime setups:
-
+    for( int i = 0; i < NUMPLANETS; i++ ) {
+        int width, height;
+        char* file = &("planets/" + std::string(Planets[i].file))[0];
+        unsigned char *texture = BmpToTexture( file, &width, &height );
+        if( texture == NULL )
+            fprintf( stderr, "Cannot open texture '%s'\n", file );
+        else
+            fprintf( stderr, "Opened '%s': width = %d ; height = %d\n", file, width, height );
+        
+        glGenTextures( 1, &Planets[i].texObject );
+        glBindTexture( GL_TEXTURE_2D, Planets[i].texObject );
+        glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexImage2D( GL_TEXTURE_2D, 0, 3, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, texture );
+    }
 }
 
 
@@ -878,49 +835,26 @@ InitLists( )
 	glutSetWindow( MainWindow );
 
 	// create the object:
-    
-    DinoDL = glGenLists( 1 );
-        glNewList( DinoDL, GL_COMPILE );
-        LoadObjFile( (char *)"dino.obj" );
+    SphereDL = glGenLists( 1 );
+    glNewList( SphereDL, GL_COMPILE );
+        OsuSphere( 1., 100, 100 );
     glEndList( );
-    
-    Sphere = glGenLists( 1 );
-    glNewList( Sphere, GL_COMPILE );
-        OsuSphere( 1., 1000, 1000 );
-    glEndList( );
-    
-    Torus = glGenLists( 1 );
-    glNewList( Torus, GL_COMPILE );
-        OsuTorus( .5, 1., 1000, 1000 );
-    glEndList( );
-    
-    GridDL = glGenLists( 1 );
-    glNewList( GridDL, GL_COMPILE );
-        SetMaterial( 0.6f, 0.6f, 0.6f, 30.f );
-        glNormal3f( 0., 1., 0. );
-        for( int i = 0; i < NZ; i++ ) {
-            glBegin( GL_QUAD_STRIP );
-                for( int j = 0; j < NX; j++ ) {
-                    glVertex3f( X0 + DX*(float)j, YGRID, Z0 + DZ*(float)(i+0) );
-                    glVertex3f( X0 + DX*(float)j, YGRID, Z0 + DZ*(float)(i+1) );
-                }
-            glEnd( );
-        }
-    glEndList( );
+
+    for (int i = 0; i < NUMPLANETS; i++ ) {
+        Planets[i].displayList = glGenLists( 1 );
+        glNewList( Planets[i].displayList, GL_COMPILE );
+            glBindTexture( GL_TEXTURE_2D, Planets[i].texObject );    // VenusTex must have already been created when this is called
+            glPushMatrix( );
+                glScalef( Planets[i].scale, Planets[i].scale, Planets[i].scale );    // scale of venus sphere, from the table
+                glCallList( SphereDL );            // a dl can call another dl that has been previously created
+            glPopMatrix( );
+        glEndList( );
+    }
     
     Light = glGenLists(1);
         glNewList(Light, GL_COMPILE);
         OsuSphere(0.1, 100, 100);
     glEndList();
-
-	// create the axes:
-
-	AxesList = glGenLists( 1 );
-	glNewList( AxesList, GL_COMPILE );
-		glLineWidth( AXES_WIDTH );
-			Axes( 1.5 );
-		glLineWidth( 1. );
-	glEndList( );
 }
 
 
@@ -934,56 +868,49 @@ Keyboard( unsigned char c, int x, int y )
 
 	switch( c )
 	{
-		case 'w':
-		case 'W':
-            LRed = 1;
-            LGreen = 1;
-            LBlue = 1;
-			break;
-            
-        case 'r':
-        case 'R':
-            LRed = 1;
-            LGreen = 0;
-            LBlue = 0;
+        case 'v':
+        case 'V':
+            NowPlanet = 0;
             break;
-            
-        case 'g':
-        case 'G':
-            LRed = 0;
-            LGreen = 1;
-            LBlue = 0;
+
+        case 'e':
+        case 'E':
+            NowPlanet = 1;
             break;
-            
-        case 'b':
-        case 'B':
-            LRed = 0;
-            LGreen = 0;
-            LBlue = 1;
-            break;
-            
-        case 'c':
-        case 'C':
-            LRed = 0;
-            LGreen = 1;
-            LBlue = 1;
-            break;
-            
+
         case 'm':
         case 'M':
-            LRed = 1;
-            LGreen = 0;
-            LBlue = 1;
+            NowPlanet = 2;
+            break;
+
+        case 'j':
+        case 'J':
+            NowPlanet = 3;
+            break;
+
+        case 's':
+        case 'S':
+            NowPlanet = 4;
+            break;
+
+        case 'u':
+        case 'U':
+            NowPlanet = 5;
+            break;
+            
+        case 'n':
+        case 'N':
+            NowPlanet = 6;
             break;
             
         case 'p':
         case 'P':
-            PointLight = true;
+            NowPlanet = 7;
             break;
             
-        case 's':
-        case 'S':
-            PointLight = false;
+        case 't':
+        case 'T':
+            mode = (mode % 3) + 1;
             break;
 
 		case 'q':
@@ -1105,7 +1032,6 @@ void
 Reset( )
 {
 	ActiveButton = 0;
-	AxesOn = 1;
 	DebugOn = 0;
 	DepthBufferOn = 1;
 	DepthFightingOn = 0;
@@ -1113,12 +1039,10 @@ Reset( )
 	Scale  = 1.0;
 	ShadowsOn = 0;
 	NowColor = YELLOW;
-	NowProjection = PERSP;
+	NowProjection = ORTHO;
 	Xrot = Yrot = 0.;
-    PointLight = false;
-    LRed = 1;
-    LGreen = 1;
-    LBlue = 1;
+    mode = 1;
+    NowPlanet = 1;
 }
 
 
@@ -1186,82 +1110,6 @@ const float LENFRAC = 0.10f;
 
 // fraction of length to use as start location of the characters:
 const float BASEFRAC = 1.10f;
-
-//	Draw a set of 3D axes:
-//	(length is the axis length in world coordinates)
-
-void
-Axes( float length )
-{
-	glBegin( GL_LINE_STRIP );
-		glVertex3f( length, 0., 0. );
-		glVertex3f( 0., 0., 0. );
-		glVertex3f( 0., length, 0. );
-	glEnd( );
-	glBegin( GL_LINE_STRIP );
-		glVertex3f( 0., 0., 0. );
-		glVertex3f( 0., 0., length );
-	glEnd( );
-
-	float fact = LENFRAC * length;
-	float base = BASEFRAC * length;
-
-	glBegin( GL_LINE_STRIP );
-		for( int i = 0; i < 4; i++ )
-		{
-			int j = xorder[i];
-			if( j < 0 )
-			{
-				
-				glEnd( );
-				glBegin( GL_LINE_STRIP );
-				j = -j;
-			}
-			j--;
-			glVertex3f( base + fact*xx[j], fact*xy[j], 0.0 );
-		}
-	glEnd( );
-
-	glBegin( GL_LINE_STRIP );
-		for( int i = 0; i < 5; i++ )
-		{
-			int j = yorder[i];
-			if( j < 0 )
-			{
-				
-				glEnd( );
-				glBegin( GL_LINE_STRIP );
-				j = -j;
-			}
-			j--;
-			glVertex3f( fact*yx[j], base + fact*yy[j], 0.0 );
-		}
-	glEnd( );
-
-	glBegin( GL_LINE_STRIP );
-		for( int i = 0; i < 6; i++ )
-		{
-			int j = zorder[i];
-			if( j < 0 )
-			{
-				
-				glEnd( );
-				glBegin( GL_LINE_STRIP );
-				j = -j;
-			}
-			j--;
-			glVertex3f( 0.0, fact*zy[j], base + fact*zx[j] );
-		}
-	glEnd( );
-
-}
-
-
-// function to convert HSV to RGB
-// 0.  <=  s, v, r, g, b  <=  1.
-// 0.  <= h  <=  360.
-// when this returns, call:
-//		glColor3fv( rgb );
 
 void
 HsvRgb( float hsv[3], float rgb[3] )
